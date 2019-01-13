@@ -9,7 +9,7 @@ A detailed description of the many options and findings are in sds011.odt
 As part of a larger project I am looking at analyzing and understanding the air quality.
 I have done a number of projects on air-sensors. The SDS-011 sensor has been around for a
 longer time and there are many articles and drivers to connect to Arduino and/or from Python.
-However I wanted to create a C-language version to connect the DYLOS 1700 and SDS30 at the same
+However I wanted to create a C-language version to connect the DYLOS 1700 and SDC30 at the same
 time and compare the results. The challenge was larger than expected.
 
 I have tested this on a Raspberry PI running Raspbian Jessie release and Ubunut 18.04. It has been
