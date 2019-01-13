@@ -55,7 +55,7 @@ Program setting:
 
 ## Versioning
 
-###version 1.0 &nbsp;/&nbsp; January 2019
+###version 1.0 / January 2019
  * Initial version for Raspberry Pi and Ubuntu
 
 ## Author
