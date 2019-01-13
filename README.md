@@ -23,8 +23,8 @@ No dependency on other libraries
 * 'make' command will create an executable call sds
 
 ## Program usage
-To get help type ./sds -h
-to get output: connect the SDS011 to USB and type sudo ./sds -o
+* To get help type ./sds -h
+* to get output: connect the SDS011 to USB and type sudo ./sds -o
 
 ### Program options
 
