@@ -2,7 +2,7 @@
 ===========================================================
 
 A program to set instructions and get information from an SDS-011 running
-on linux. It has been written in C.
+on linux. It has been written in C and contains a flexible command-line options<br>
 A detailed description of the many options and findings are in sds011.odt
 
 ## Getting Started
@@ -54,7 +54,7 @@ Program setting:
 * -v            set verbose / debug info     (default : NOT set)
 
 ## Versioning
-#version 1.0   /  January 2019
+#version 1.0 &nbsp;/&nbsp; January 2019
  * Initial version for Raspberry Pi and Ubuntu
 
 ## Author
