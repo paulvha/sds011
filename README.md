@@ -1,10 +1,11 @@
 # SDS011 library for Raspberry Pi
 ===========================================================
 
-A starting point and still small part of this code is based on the work
-by karl, found on:  github https://github.com/karlchen86/SDS011
+A program to set instructions and get information from an SDS-011 running
+on linux. It has been written in C.
+A detailed description of the many options and findings are in sds011.odt
 
-## Background
+## Getting Started
 As part of a larger project I am looking at analyzing and understanding the air quality.
 I have done a number of projects on air-sensors. The SDS-011 sensor has been around for a
 longer time and there are many articles and drivers to connect to Arduino and/or from Python.
@@ -14,22 +15,18 @@ time and compare the results. The challenge was larger than expected.
 I have tested this on a Raspberry PI running Raspbian Jessie release and Ubunut 18.04. It has been
 adjusted and extended for stable working.
 
-## Versions
-#version 1.0   /  January 2019
- * Initial version for Raspberry Pi and Ubuntu
- * by Paul van Haastrecht (paulvha@hotmail.com)
+## Prerequisites
+No dependency on other libraries
 
 ## Software installation
-
-Copy the files in a directory
-'make' command will create an executable call sds
+* Copy the files in a directory
+* 'make' command will create an executable call sds
 
 ## Program usage
-
 To get help type ./sds -h
 to get output: connect the SDS011 to USB and type sudo ./sds -o
 
-### Other programm options
+### Program options
 
 SDS-011 Options:
 
@@ -56,4 +53,16 @@ Program setting:
 * -h            show help info
 * -v            set verbose / debug info     (default : NOT set)
 
-### detailed description of the many options and findings are in sds011.odt
+## Versioning
+#version 1.0   /  January 2019
+ * Initial version for Raspberry Pi and Ubuntu
+
+## Author
+* Paul van Haastrecht (paulvha@hotmail.com)
+
+## License
+This project is licensed under the GNU GENERAL PUBLIC LICENSE 3.0
+
+## Acknowledgements
+A starting point and still small part of this code is based on the work
+by karl, found on:  github https://github.com/karlchen86/SDS011
