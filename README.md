@@ -1,4 +1,4 @@
-# paulvha SDS011 library for Raspberry Pi
+# SDS011 library for Raspberry Pi
 ===========================================================
 
 A starting point and still small part of this code is based on the work
@@ -29,7 +29,7 @@ Copy the files in a directory
 To get help type ./sds -h
 to get output: connect the SDS011 to USB and type sudo ./sds -o
 
-# Other programm options
+### Other programm options
 
 SDS-011 Options:
 
@@ -56,4 +56,4 @@ Program setting:
 * -h            show help info
 * -v            set verbose / debug info     (default : NOT set)
 
-# detailed description of the many options and findings are in sds011.odt
+### detailed description of the many options and findings are in sds011.odt
