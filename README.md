@@ -33,27 +33,27 @@ to get output: connect the SDS011 to USB and type sudo ./sds -o
 
 SDS-011 Options:
 
--m    get current working mode
--p    get current working period
--r    get current reporting mode
--d    get Device ID
--f    get firmware version
--o    get data  (default : NO data)
+* -m    get current working mode
+* -p    get current working period
+* -r    get current reporting mode
+* -d    get Device ID
+* -f    get firmware version
+* -o    get data  (default : NO data)
 
 SDS-011 setting:
 
--M [ S / W  ]   Set working mode (sleep or work)
--P  [ 0 - 30 ]  Set working period (minutes)
--R [ Q / R  ]   Set reporting mode (query or reporting)
--D [ 0xaabb ]   Set new device ID
+* -M [ S / W  ]   Set working mode (sleep or work)
+* -P  [ 0 - 30 ]  Set working period (minutes)
+* -R [ Q / R  ]   Set reporting mode (query or reporting)
+* -D [ 0xaabb ]   Set new device ID
 
 Program setting:
 
--q x:y        get data in query mode x times (0 = endless), y seconds delay.
--H #          set correction for humidity (e.g. 33.5 for 33.5%)
--u device     set new device                     (default = /dev/ttyUSB0)
--b            set no color output              (default : color)
--h            show help info
--v            set verbose / debug info     (default : NOT set)
+* -q x:y        get data in query mode x times (0 = endless), y seconds delay.
+* -H #          set correction for humidity (e.g. 33.5 for 33.5%)
+* -u device     set new device                     (default = /dev/ttyUSB0)
+* -b            set no color output              (default : color)
+* -h            show help info
+* -v            set verbose / debug info     (default : NOT set)
 
 # detailed description of the many options and findings are in sds011.odt
