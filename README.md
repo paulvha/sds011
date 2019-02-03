@@ -58,6 +58,10 @@ Program setting:
 ### version 1.0 / January 2019
  * Initial version for Raspberry Pi and Ubuntu
 
+### version 1.1 / February 2019
+ * set reporting mode to query included in -q option
+ * set reporting mode to stream included in  -o option
+
 ## Author
 * Paul van Haastrecht (paulvha@hotmail.com)
 
