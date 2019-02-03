@@ -1,6 +1,10 @@
 /*
  * Copyright (c) 2018 Paulvha.      version 1.0
  *
+ * version 1.1 / paulvha / February 2019
+ * - set reporting mode to query included in -q option
+ * - set reporting mode to stream included in  -o option
+ *
  * This program will set and get information from an SDS-011 sensor
  *
  * A starting point and still small part of this code is based on the work from
@@ -28,7 +32,7 @@
 #include "serial.h"
 #include "sds011_lib.h"
 
-#define PROGVERSION "1.0 / January 2019 / paulvha"
+#define PROGVERSION "1.1 / February 2019 / paulvha"
 
 // global variables
 int fd = 0xff;                   // filepointer
@@ -251,6 +255,7 @@ void parse_cmdline(int opt, char *option, struct settings *action)
         break;
 
     case 'o':   // get data continuous
+        action->s_reporting_mode = REPORT_STREAM;
         action->g_data = true;
         SetDataDisplay(true);
         break;
@@ -299,6 +304,9 @@ void parse_cmdline(int opt, char *option, struct settings *action)
 
         buf[i] = 0x0;
         action->q_delay = (uint8_t)strtod(buf, NULL);
+
+        // set reporting mode to query
+        action->s_reporting_mode = REPORT_QUERY;
 
         break;
 
@@ -442,7 +450,7 @@ void main_action(struct settings *action)
     if (action->s_reporting_mode != 0xff){
         /* set query mode  or reporting/streaming mode */
         if (Set_data_reporting_mode(action->s_reporting_mode) == SDS011_ERROR) {
-            p_printf(RED,"error during setting reporint mode\n");
+            p_printf(RED,"error during setting reporting mode\n");
             closeout(EXIT_FAILURE);
         }
     }

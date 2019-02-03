@@ -67,7 +67,7 @@ uint8_t CalcChecksum(const uint8_t *packet, uint8_t length)
  *********************************************************************/
 uint8_t ProcessResponse( const uint8_t *packet, uint8_t length, sds011_response_t *ret)
 {
-    int i; 
+    int i;
     if (PrmDebug) {
         printf("Received: ");
         for (i=0 ; i < length; i++) printf("%02X ", packet[i]);
@@ -189,6 +189,8 @@ int Get_data_reporting_mode()
 /*********************************************************************
  * @brief : initialise packet to be send.
  * @param data1 : the data1 byte to be included
+ *
+ * Data Packet(19bytes): Head+Command ID+Data(15bytes)+checksum+Tail
  *********************************************************************/
 void prepare_packet(uint8_t data1)
 {
@@ -371,6 +373,7 @@ int Query_data(int loop, int delay)
         // if not finished
         if (count) sleep(delay);
     }
+
     _Display_Data = save_gdata;
     return(SDS011_OK);
 
