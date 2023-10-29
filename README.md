@@ -37,7 +37,8 @@ SDS-011 Options:
 * -r    get current reporting mode
 * -d    get Device ID
 * -f    get firmware version
-* -o    get data  (default : NO data)
+* -q    use query reporting mode       (default : continous)
+
 
 SDS-011 setting:
 
@@ -48,10 +49,11 @@ SDS-011 setting:
 
 Program setting:
 
-* -q x:y        get data in query mode x times (0 = endless), y seconds delay.
+* -l x          loop x times ( 0 = endless)  (default : 10 loops)
+* -w x          x seconds between query data (default : 5 seconds)
 * -H #          set correction for humidity (e.g. 33.5 for 33.5%)
-* -u device     set new device                     (default = /dev/ttyUSB0)
-* -b            set no color output              (default : color)
+* -u device     set new device               (default : /dev/ttyUSB0)
+* -b            set no color output          (default : color)
 * -h            show help info
 * -v            set verbose / debug info     (default : NOT set)
 
