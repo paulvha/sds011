@@ -1,10 +1,6 @@
 /*
  * Copyright (c) 2018 Paulvha.      version 1.0
  *
- * version 1.1 / paulvha / February 2019
- * - set reporting mode to query included in -q option
- * - set reporting mode to stream included in  -o option
- *
  * This program will set and get information from an SDS-011 sensor
  *
  * A starting point and still small part of this code is based on the work from
@@ -27,20 +23,58 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ * 
+ * Version 2.1 paulvha Ocobter 2023
+ *  - fixed issue with wakeup after setting to sleep
+ * 
+ * version 2.0 paulvha, May 2019
+ *  - changed better structure between user level and supporting library
+ *  - changed to CPP file structure
+ *  - enhanced debugging
+ * 
  */
 
-#include "serial.h"
 #include "sds011_lib.h"
+#include <fcntl.h>
+#include <string.h>
+#include <termios.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <getopt.h>
+#include <stdarg.h>
 
-#define PROGVERSION "1.1 / February 2019 / paulvha"
+#define PROGVERSION "2.1 / October 2023 / paulvha"
+
+/* indicate these serial calls are C-programs and not to be linked */
+extern "C" {
+    void configure_interface(int fd, int speed);
+    void set_blocking(int fd, int should_block);
+    void restore_ser(int fd);
+}
 
 // global variables
-int fd = 0xff;                   // filepointer
+int  fd = 0xff;                   // file pointer
 char progname[20];
 char port[20] = "/dev/ttyUSB0";
-bool PrmDebug;                   // enable debug messages
-bool NoColor = false;            // no color output
 
+/*=======================================================================
+    to display in color
+  -----------------------------------------------------------------------*/
+void p_printf (int level, char *format, ...);
+
+/*! color display enable */
+#define RED     1
+#define GREEN   2
+#define YELLOW  3
+#define BLUE    4
+#define WHITE   5
+
+#define REDSTR "\e[1;31m%s\e[00m"
+#define GRNSTR "\e[1;92m%s\e[00m"
+#define YLWSTR "\e[1;93m%s\e[00m"
+#define BLUSTR "\e[1;34m%s\e[00m"
+bool NoColor = false;            // no color output
 
 // command line options
 typedef struct settings
@@ -48,21 +82,24 @@ typedef struct settings
     bool        g_firmware;       // display firmware
     bool        g_devid;          // display device id
     bool        g_working_mode;   // display working mode (sleep/working)
-    bool        g_working_period; // display working period (continuous or interval)
-    bool        g_reporting_mode; // display reporting mode (reporting/ query)
+    bool        g_working_period; // display working period (continuous / interval)
+    bool        g_reporting_mode; // display reporting mode (reporting / query)
 
-    bool        g_data;           // display data
-    int         q_loop;           // how many reads in query mode
-    int         q_delay;          // delay between readin query mode
+    bool        g_data;           // display data: true continuous, false : query
+    uint16_t    loop;             // how many loop or reading
+    uint16_t    delay;            // delay between reading data
 
     bool        s_devid;          // change devid
     uint8_t     newid[2];         // hold new device id
-    uint8_t     s_reporting_mode; // set working mode
     uint8_t     s_working_mode;   // set working mode
     uint8_t     s_working_period; // set working period
 } settings ;
 
+// global structure
 struct settings action;
+
+/* global constructor SDS011 */ 
+SDS011 MySensor;
 
 /*********************************************************************
 *  @brief close program correctly
@@ -71,6 +108,7 @@ struct settings action;
 void closeout(int val)
 {
     if (fd != 0xff) {
+        
         // restore serial/USB to orginal setting
         restore_ser(fd);
 
@@ -140,7 +178,7 @@ void signal_handler(int sig_num)
         case SIGABRT:
         case SIGTERM:
         default:
-            p_printf(YELLOW, "\nStopping SDS-011 monitor\n");
+            p_printf(YELLOW, (char *) "\nStopping SDS-011 monitor\n");
             closeout(EXIT_SUCCESS);
             break;
     }
@@ -175,15 +213,14 @@ void init_variables()
     action.g_working_period = false; // display working period (continuous or interval)
     action.g_reporting_mode = false; // display reporting mode (reporting/ query)
 
-    action.g_data = false;           // display data
-    action.q_loop  = 0xff;           // how many reads in query mode
-    action.q_delay = 0xff;           // delay between read in query mode
+    action.g_data = true;            // use continuous data
+    action.loop  = 10;                // how many read loops 
+    action.delay = 5;                 // delay between query read data
 
     action.s_devid = false;          // change devid
 
-    action.s_reporting_mode = 0xff;  // set working mode
-    action.s_working_mode = 0xff;    // set working mode
-    action.s_working_period = 0xff;  // set working period
+    action.s_working_mode = 0xff;     // set working mode (sleep/work)
+    action.s_working_period = 0xff;   // set working period ( 0 - 30 min)
 }
 
 /*********************************************************************
@@ -193,33 +230,91 @@ void usage ()
 {
     p_printf(YELLOW, (char *)
 
-    "%s [options]  (version %s)\n\n"
+    "%s [options]  (version %s)\n"
 
-    "\nSDS-011 Options: \n\n"
+    "\nSDS-011 Display Options: \n\n"
 
     "-m             get current working mode\n"
     "-p             get current working period\n"
     "-r             get current reporting mode\n"
     "-d             get Device ID\n"
     "-f             get firmware version\n"
-    "-o             get data                    (default : NO data)\n"
+    "-q             use query reporting mode       (default : continuous)\n"
 
     "\nSDS-011 setting: \n\n"
 
     "-M [ S / W  ]  Set working mode (sleep or work)\n"
     "-P [ 0 - 30 ]  Set working period (minutes)\n"
-    "-R [ Q / R  ]  Set reporting mode (query or reporting)\n"
     "-D [ 0xaabb ]  Set new device ID\n"
 
     "\nProgram setting: \n\n"
-
-    "-q x:y         get data in query mode x times (0 = endless), y seconds delay.\n"
+    "-l x           loop x times (0 = endless)   (default : %d loops)\n"
+    "-w x           x seconds between query data (default : %d seconds)\n"
     "-H #           set correction for humidity  (e.g. 33.5 for 33.5%)\n"
-    "-u device      set new device               (default = %s)\n"
+    "-u device      set new device-port          (default : %s)\n"
     "-b             set no color output          (default : color)\n"
     "-h             show help info\n"
     "-v             set verbose / debug info     (default : NOT set\n",
-     progname,PROGVERSION, port);
+     progname, PROGVERSION, action.loop, action.delay,port);
+}
+
+/**
+ * read the PM values either in query or continuous mode
+ */
+
+void read_PM()
+{
+    float pm25, pm10;
+    int loopcount = action.loop;
+    uint8_t rmode = REPORT_QUERY;
+  
+    if (action.g_data) {
+        rmode = REPORT_STREAM;
+        p_printf(GREEN, (char *) "Continuously capturing data\n");
+    }
+    else
+        p_printf(GREEN, (char *) "Query for data with an %d seconds interval\n", action.delay);
+
+    if (MySensor.Set_data_reporting_mode(rmode) == SDS011_ERROR) {
+        p_printf(RED, (char *)"error during setting reading mode\n");
+        closeout(EXIT_FAILURE);
+    }
+    
+    // if endless
+    if (loopcount == 0) loopcount = 1; 
+    
+    while (loopcount)
+    {
+        if (action.g_data){
+            
+            // continuous mode
+            if (MySensor.Get_data(&pm25, &pm10) == SDS011_ERROR) {
+                p_printf(RED, (char *)"error during reading data\n");
+                closeout(EXIT_FAILURE);
+            }
+        }
+        else {
+            
+            /* query data */
+            if (MySensor.Query_data(&pm25, &pm10) == SDS011_ERROR) {
+                p_printf(RED, (char *)"error during query data\n");
+                closeout(EXIT_FAILURE);
+            }
+        }
+
+        printf("PM 2.5 %f, PM10 %f\n", pm25, pm10);
+        
+        // if not endless loop
+        if (action.loop != 0)  loopcount--;
+   
+        if (loopcount) {
+            
+            // wait in between reading during query (if set)
+            if (action.delay && action.g_data == false) sleep(action.delay);
+        }
+    }
+    
+    printf("Number of requested loops reached\n");
 }
 
 /*********************************************************************
@@ -227,14 +322,13 @@ void usage ()
  *
  * @param opt : option character detected
  * @param option : pointer to potential option value
- * @param mm : measurement variables
  *
  *********************************************************************/
-void parse_cmdline(int opt, char *option, struct settings *action)
+void parse_cmdline(int opt, char *option)
 {
     char *p = option;
-    int i = 0;
-    char buf[10];
+    uint8_t i = 0;
+    char buf[4];
 
     switch (opt) {
 
@@ -243,29 +337,23 @@ void parse_cmdline(int opt, char *option, struct settings *action)
         break;
 
     case 'd':   // get device-id
-        action->g_devid = true;
+        action.g_devid = true;
         break;
 
     case 'f':   // get firmware
-        action->g_firmware = true;
+        action.g_firmware = true;
         break;
 
     case 'm':   // get current working mode  (sleep/work)
-        action->g_working_mode = true;
-        break;
-
-    case 'o':   // get data continuous
-        action->s_reporting_mode = REPORT_STREAM;
-        action->g_data = true;
-        SetDataDisplay(true);
+        action.g_working_mode = true;
         break;
 
     case 'p':   // get working period
-        action->g_working_period = true;
+        action.g_working_period = true;
         break;
 
-    case 'r':   // get current reporting mode (report/ query)
-        action->g_reporting_mode = true;
+    case 'r':   // get current reporting mode (report / query)
+        action.g_reporting_mode = true;
         break;
 
     case 'u':   // Set new device
@@ -273,40 +361,50 @@ void parse_cmdline(int opt, char *option, struct settings *action)
         break;
 
     case 'v':   // set debug output
-        PrmDebug = true;
+        MySensor.EnableDebugging(1);
         break;
 
-    case 'q':   // Set query reads and interval
+    case 'q':   // Set query reporting mode
+        action.g_data = false;
+        break;
+    
+    case 'l':   // set loop count
         i = 0;
-        while (*p != ':'){
-
+        while (*p != 0x0){
+        
              buf[i++] = *p++;
-
-             if (i > sizeof(buf)){
-                p_printf(RED,"query read amount too long %s\n", option);
+        
+             if (i > sizeof(buf) - 1) {
+                p_printf(RED, (char*) "Loop amount too long %s\n", option);
                 exit(EXIT_FAILURE);
              }
         }
+        
         buf[i] = 0x0;
-        action->q_loop = (uint8_t)strtod(buf, NULL);
-        p++; // skip :
+        action.loop = (uint8_t) strtod(buf, NULL);
 
+        break;
+    
+    case 'w':   // delay between data reading
         i = 0;
         while (*p != 0x0){
 
              buf[i++] = *p++;
 
-             if (i > sizeof(buf)){
-                p_printf(RED,"query delay amount too long %s\n", option);
+             if (i > sizeof(buf) -1) {
+                p_printf(RED, (char*) "Delay amount too long %s\n", option);
                 exit(EXIT_FAILURE);
              }
         }
 
         buf[i] = 0x0;
-        action->q_delay = (uint8_t)strtod(buf, NULL);
-
-        // set reporting mode to query
-        action->s_reporting_mode = REPORT_QUERY;
+        action.delay = (uint8_t) strtod(buf, NULL);
+        
+        if (action.delay < 3)
+        {
+            p_printf(RED, (char*) "Delay of %d is less than 3 seconds\n", action.delay);
+            exit(EXIT_FAILURE);
+        }           
 
         break;
 
@@ -316,54 +414,46 @@ void parse_cmdline(int opt, char *option, struct settings *action)
                 if (*p++ == 'x'){
                     buf[0] = *p++;
                     buf[1] = *p++;
-                    buf[2]= 0x0;
-                    action->newid[1] = (uint8_t)strtol(buf, NULL, 16);
+                    buf[2]  = 0x0;
+                    action.newid[1] = (uint8_t)strtol(buf, NULL, 16);
 
                     buf[0] = *p++;
                     buf[1] = *p++;
-                    action->newid[0] = (uint8_t)strtol(buf, NULL, 16);
+                    action.newid[0] = (uint8_t)strtol(buf, NULL, 16);
 
-                    action->s_devid = true;
+                    action.s_devid = true;
+                    action.g_devid = true;
                     break;
                 }
             }
         }
-        p_printf(RED,"Invalid Device Id %s\n", option);
+        p_printf(RED,(char *) "Invalid Device Id %s\n", p);
         exit(EXIT_FAILURE);
         break;
 
-    case 'M':   // Set working  mode
-        if (*option == 's' || *option == 'S') action->s_working_mode = MODE_SLEEP;
-        else if (*option == 'w'|| *option == 'W') action->s_working_mode = MODE_WORK;
+    case 'M':   // Set working  mode devID needs to be added
+        if (*option == 's' || *option == 'S') action.s_working_mode = MODE_SLEEP;
+        else if (*option == 'w'|| *option == 'W') action.s_working_mode = MODE_WORK;
         else {
-            p_printf(RED,"invalid working mode %s [ s or w ]\n", option);
+            p_printf(RED,(char *) "invalid working mode %s [ s or w ]\n", option);
             exit(EXIT_FAILURE);
         }
         break;
 
     case 'P':   // set working period
-        action->s_working_period  = (uint8_t)strtod(option, NULL);
+        action.s_working_period  = (uint8_t)strtod(option, NULL);
 
-        if (action->s_working_period  < 0 || action->s_working_period  > 30){
-            p_printf(RED,"invalid working period %d minutes. [ 0 - 30 ]\n", action->s_working_period );
+        if (action.s_working_period  < 0 || action.s_working_period  > 30){
+            p_printf(RED,(char *)"invalid working period %d minutes. [ 0 - 30 ]\n", action.s_working_period );
             exit(EXIT_FAILURE);
         }
 
         break;
 
     case 'H':   // set relative humidity correction
-        if (Set_Humidity_Cor(strtod(option, NULL)))
+        if (MySensor.Set_Humidity_Cor(strtod(option, NULL)))
         {
-            p_printf(RED,"Invalid Humidity : %s [1 - 100%]\n",option );
-            exit(EXIT_FAILURE);
-        }
-        break;
-
-    case 'R':   // Set reporting  mode
-        if (*option == 'r' || *option == 'R') action->s_reporting_mode = REPORT_STREAM;
-        else if (*option == 'q' || *option == 'Q') action->s_reporting_mode = REPORT_QUERY;
-        else {
-            p_printf(RED,"invalid reporting mode %s [ r or q ]\n", option);
+            p_printf(RED,(char *) "Invalid Humidity : %s [1 - 100%]\n",option );
             exit(EXIT_FAILURE);
         }
         break;
@@ -381,90 +471,110 @@ void parse_cmdline(int opt, char *option, struct settings *action)
  *  SDS011_ERROR = reponse received
  *  SDS011_OK = all good
  *********************************************************************/
-void main_action(struct settings *action)
+void main_action()
 {
-    if (action->g_firmware){
+    uint8_t data[3];
+    
+    if (action.g_firmware){
+        
         /* get firmware version */
-        if (Get_Firmware_Version() == SDS011_ERROR) {
-            p_printf(RED,"error during reading firmware\n");
+        if (MySensor.Get_Firmware_Version(data) == SDS011_ERROR) {
+            p_printf(RED,(char *)"error during reading firmware\n");
             closeout(EXIT_FAILURE);
         }
+        
+        printf("Firmware date (Y-M-D): %d-%d-%d\n", data[0], data[1], data[2]);
     }
 
-    /* the device ID is captured during TryConnect() */
-    if (action->g_devid){
-        printf("Current DeviceID: 0x%04x\n", Get_DevID());
+    /* the device ID is captured during begin() */
+    if (action.g_devid){
+        printf("Current DeviceID: 0x%04x\n", MySensor.Get_DevID());
     }
 
-    if (action->g_reporting_mode){
-        /* current reporting mode */
-        if (Get_data_reporting_mode() == SDS011_ERROR) {
-            p_printf(RED,"error during getting reporting mode\n");
-            closeout(EXIT_FAILURE);
-        }
-    }
-
-    if (action->g_working_mode){
-        /* current sleep/working mode */
-        if (Get_Sleep_Work_mode() == SDS011_ERROR) {
-            p_printf(RED,"error during getting sleep/working mode\n");
-            closeout(EXIT_FAILURE);
-        }
-    }
-
-    if (action->g_working_period){
-        /* current current working period */
-        if (Get_Working_Period() == SDS011_ERROR) {
-            p_printf(RED,"error during getting current working period\n");
-            closeout(EXIT_FAILURE);
-        }
-    }
-
-    if (action->s_devid){
+    if (action.s_devid){
+        
         /* set new devID */
-        if (Set_New_Devid(action->newid) == SDS011_ERROR){
-            p_printf(RED,"error during setting new Device ID\n");
+        if (MySensor.Set_New_Devid(action.newid) == SDS011_ERROR){
+            p_printf(RED,(char *) "error during setting new Device ID\n");
             closeout(EXIT_FAILURE);
         }
+        printf("New DeviceID: 0x%04x\n", MySensor.Get_DevID());
     }
 
-    if (action->s_working_mode != 0xff){
-        /* set sleeping / working mode  */
-        if (Set_Sleep_Work_Mode(action->s_working_mode) == SDS011_ERROR) {
-            p_printf(RED,"error during setting sleeping/working mode\n");
+    if (action.g_reporting_mode){
+        /* get current reporting mode */
+        if (MySensor.Get_data_reporting_mode(data) == SDS011_ERROR) {
+            p_printf(RED,(char *)"error during getting reporting mode\n");
             closeout(EXIT_FAILURE);
         }
+        
+        if (data[0] == REPORT_STREAM)
+            printf("Currently in streaming mode\n");
+        else
+            printf("Currently in Query mode\n");
     }
 
-    if (action->s_working_period != 0xff){
+    if (action.g_working_mode){
+        /* current sleep/working mode */
+        if (MySensor.Get_Sleep_Work_mode(data) == SDS011_ERROR) {
+            p_printf(RED,(char *) "error during getting sleep/working mode\n");
+            closeout(EXIT_FAILURE);
+        }
+        
+        if (data[0] == MODE_SLEEP)
+            printf("Currently in sleeping mode\n");
+        else
+            printf("Currently in Working mode\n");
+    }
+
+    if (action.g_working_period){
+        /* current current working period */
+        if (MySensor.Get_Working_Period(data) == SDS011_ERROR) {
+            p_printf(RED,(char *) "error during getting current working period\n");
+            closeout(EXIT_FAILURE);
+        }
+        
+        if (data[0] == 0)
+            printf("Working period in continuous mode");
+        else
+            printf("Working period every %d minutes\n", data[0]);
+    }
+
+    if (action.s_working_mode != 0xff){
+        /* set working mode */
+        if (MySensor.Set_Sleep_Work_Mode(action.s_working_mode) == SDS011_ERROR) {
+            p_printf(RED,(char *)"error during setting sleeping mode\n");
+            closeout(EXIT_FAILURE);
+        }
+        
+        if (action.s_working_mode == MODE_WORK){ // added V 2.1
+            p_printf(YELLOW, (char*)"wait 30 seconds to stabalize working mode\n");
+    
+            sleep(30);
+            tcflush(fd,TCIOFLUSH);  // remove any received package during wait
+
+        }
+        else     // added V 2.1
+        {
+            p_printf(YELLOW, (char *)"Set to sleep\n");
+            closeout(EXIT_SUCCESS); // do not start reading after setting to sleep
+        }
+           
+    }
+
+    if (action.s_working_period != 0xff){
         /* set working period to every x minutes
          * 0 = set working period to continuous
          * needs 30 seconds before the first result will show*/
 
-        if (Set_Working_Period(action->s_working_period ) == SDS011_ERROR) {
-            p_printf(RED,"error during setting working period\n");
+        if (MySensor.Set_Working_Period(action.s_working_period ) == SDS011_ERROR) {
+            p_printf(RED,(char *) "error during setting working period\n");
             closeout(EXIT_FAILURE);
         }
     }
-
-    if (action->s_reporting_mode != 0xff){
-        /* set query mode  or reporting/streaming mode */
-        if (Set_data_reporting_mode(action->s_reporting_mode) == SDS011_ERROR) {
-            p_printf(RED,"error during setting reporting mode\n");
-            closeout(EXIT_FAILURE);
-        }
-    }
-
-    if (action->q_loop != 0xff){
-        /* query data */
-        if (Query_data( action->q_loop,  action->q_delay) == SDS011_ERROR) {
-            p_printf(RED,"error during query data\n");
-            closeout(EXIT_FAILURE);
-        }
-    }
-
-    // last in chain... as it keeps looping
-    if (action->g_data) read_sds(0, NULL);
+    
+    // check for reading PM values
+    read_PM();
 }
 
 /*********************************************************************
@@ -474,14 +584,19 @@ int main(int argc, char *argv[])
 {
     int opt;
 
+    if (geteuid() != 0)  {
+        p_printf(RED,(char *)"You must be super user\n");
+        exit(EXIT_FAILURE);
+    }
+
     /* save name for (potential) usage display */
     strncpy(progname,argv[0],20);
-
+    
     init_variables();
 
     /* parse commandline */
-    while ((opt = getopt(argc, argv, "H:hbmprdfovM:R:P:D:u:q:")) != -1)
-       parse_cmdline(opt, optarg, &action);
+    while ((opt = getopt(argc, argv, "H:hbmprdfvM:P:D:u:ql:w:")) != -1)
+       parse_cmdline(opt, optarg);
 
     /* set signals */
     set_signals();
@@ -497,7 +612,7 @@ int main(int argc, char *argv[])
     fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
 
     if (fd < 0) {
-        p_printf(RED, "could not open %s\n", port);
+        p_printf(RED, (char *) "could not open %s\n", port);
         exit(EXIT_FAILURE);
     }
 
@@ -514,17 +629,20 @@ int main(int argc, char *argv[])
     usleep(10000);                      // required to make flush work, for some reason
     tcflush(fd,TCIOFLUSH);
 
+    p_printf(YELLOW, (char *) "Connecting to SDS-011\n");
+    
     /* try overcome connection problems before real actions (see document)
      * this will also inform the driver about the file description to use for writting
      * and reading */
-    if (Try_Connect(fd) == SDS011_ERROR)
+    if (MySensor.begin(fd) == SDS011_ERROR)
     {
-        printf("Error during trying to connect\n");
+        p_printf(RED, (char*) "Error during trying to connect\n");
         closeout(EXIT_FAILURE);
     }
-
-    /* perform the real actions */
-    main_action(&action);
+    p_printf(GREEN, (char *) "Connected\n");
+    
+    /* perform the requested actions */
+    main_action();
 
     closeout(EXIT_SUCCESS);
 }

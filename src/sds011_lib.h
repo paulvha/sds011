@@ -25,39 +25,23 @@
  * THE SOFTWARE.
  */
 
-
-
 #ifndef _SDS011_H
 #define _SDS011_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
-#include <termios.h>
 #include <unistd.h>
-#include <time.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <getopt.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <getopt.h>
-#include <stdarg.h>
 #include <math.h>
 
-// Command IDs
+// Configuration commands
 #define SDS011_MODE   0x02 // Set data reporting mode (3rd byte)
-#define SDS011_QDATA  0x04 // Get data if in Queary mode (3rd byte)
+#define SDS011_QDATA  0x04 // Get data if in Query mode (3rd byte)
 #define SDS011_DEVID  0x05 // Set device ID (3rd byte)
 #define SDS011_SLEEP  0x06 // Set sleep and work (3rd byte)
 #define SDS011_FWVER  0x07 // Get firmware version (3rd byte)
 #define SDS011_PERIOD 0x08 // Set working period (3rd byte)
+
+// message header & trailer
 #define SDS011_BYTE_BEGIN 0xAA // 1st byte of message
 #define SDS011_BYTE_END   0xAB // Last byte of message
 
@@ -82,78 +66,326 @@ extern "C" {
 #define MODE_SLEEP    0x0
 #define MODE_WORK     0x1
 
-extern bool PrmDebug;
-
 typedef struct
 {
-    uint8_t cmd_id; // Command ID
-    uint8_t type;   // 0=Query current mode, 1=Set mode
-    uint8_t mode;   //
-    uint8_t value;  // 0=Continous, 1-30 (mins) [work 30 sec and sleep n*60-30 sec]
-    uint16_t devid; // Device ID
-    uint8_t year;   // Year
-    uint8_t month;  // Month
-    uint8_t day;    // Day
-    float pm25;     // PM 2.5
-    float pm10;     // PM 10
+    uint8_t cmd_id;  // Command ID (SDS011_DATA or SDS011_CONF)
+    uint8_t confcmd; // SDS011_DATA = 0;  SDS011_CONF : configuration command
+    uint8_t type;    // 0=Query current mode, 1=Set mode
+    uint8_t mode;    // set or query.
+    uint8_t value;   // 0=Continous, 1-30 (mins) [work 30 sec and sleep n*60-30 sec]
+    uint16_t devid;  // Device ID
+    uint8_t year;    // Firmware Year
+    uint8_t month;   // Firmware Month
+    uint8_t day;     // Firmware Day
+    float   pm25;    // PM 2.5 value
+    float   pm10;    // PM 10 value
 } sds011_response_t;
 
-/**
- * @brief Process input from sensor.
- * @param packet Received packets from sensor.
- * @param length Number of received packets.
- * @param response_obj Buffer to store response struct.
- * @return SDS011_OK if ok, SDS011_ERROR on error.
- */
-uint8_t sds011_process( const uint8_t *packet, uint8_t length, sds011_response_t *ret);
-/**
- * @brief Calculate checksum from bytes.
- * @param packet Packets to use for computation.
- * @param length Number of bytes to use.
- * @return Checksum of bytes.
- */
-uint8_t sds011_checksum(const uint8_t *packet, uint8_t length);
-int Get_Firmware_Version();
-int Set_data_reporting_mode(int rmode);
-int Get_data_reporting_mode();
-int Set_Sleep_Work_Mode(int rmode) ;
-int Get_Sleep_Work_mode();
-int Set_Working_Period( uint8_t period);
-int Get_Working_Period();
-int Set_New_Devid(uint8_t * newid);
-int Query_data();
+class SDS011
+{
+  public:
+  
+    SDS011(void);
+    
+    /**
+     * @brief  Enable or disable the printing of sent/response HEX values.
+     *
+     * @param act : level of debug to set
+     *  0 : no debug message
+     *  1 : sending and receiving data
+     */
+    void EnableDebugging(uint8_t act);
 
-void prepare_packet(uint8_t data1);
-int read_sds(int loop, char * ret);
-int send_sds(uint8_t * packet);
-void SetDataDisplay(bool instruct);
-int Set_Humidity_Cor(float h);
-int Try_Connect(int fd);
-uint16_t Get_DevID();
+    /**
+     * @brief : first call to initiatize the library
+     * 
+     * @param fd: file descriptor of opened device
+     * 
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int begin(int fd);
+    
+    /**
+     * @brief : read firmware version
+     * 
+     @param data : return firmware data (3 bytes)
+     *  fddata[0] = year;
+     *  fddata[1] = month;
+     *  fddata[2] = day;
+     * 
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Get_Firmware_Version(uint8_t *fwdata);
+      
+    /**
+     * @brief : get current reporting mode
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Get_data_reporting_mode(uint8_t *p) {return(Get_Param(SDS011_MODE, p));}
+       
+    /**
+     * @brief : set the data reporting mode
+     *
+     * @param p
+     *  REPORT_QUERY = Sensor received query data command to report a measurement data.
+     *  REPORT_STREAM = Sensor automatically reports a measurement data in a work period.
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Set_data_reporting_mode(uint8_t p) {return(Set_Param(SDS011_MODE, p));}
 
+    /**
+     * @brief : get current sleep/working mode
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Get_Sleep_Work_mode(uint8_t *p) {return(Get_Param(SDS011_SLEEP, p));}
+    
+    /**
+     * @brief : set the sleep / work mode
+     *
+     * @param p
+     * MODE_WORK = Sensor starts working. needs 30 seconds before good enough data
+     * MODE_SLEEP = Sensor goes in sleep mode
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */    
+    int Set_Sleep_Work_Mode(uint8_t p) { return(Set_Param(SDS011_SLEEP, p));}
+    /**
+     * @brief : get current working period
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Get_Working_Period(uint8_t *p) {return(Get_Param(SDS011_PERIOD, p));}
+    
+    /**
+     * @brief : set the data reporting mode
+     *
+     * @param period :
+     *  0      = continuus
+     *  1 - 30 = set work every n minutes
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Set_Working_Period(uint8_t p) {return(Set_Param(SDS011_PERIOD, p));}
 
-/*=======================================================================
-    to display in color
-  -----------------------------------------------------------------------*/
-void p_printf (int level, char *format, ...);
+    /**
+     * @brief : get current device ID
+     */
+    uint16_t Get_DevID();
 
-/*! color display enable */
-#define RED     1
-#define GREEN   2
-#define YELLOW  3
-#define BLUE    4
-#define WHITE   5
+    /**
+     * @brief : set new device ID
+     * 
+     * @param newid : newid to set
+     * 
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Set_New_Devid(uint8_t *newid);
+    
+    /**
+     * @brief :  set relative humidity correction
+     *
+     * @param h: relative humidity (like 30.5%) to enable or zero to disable
+     *           correction. if zero it will disable the correction
+     * 
+     * @return :
+     *  SDS011_ERROR : could not handle command
+     *  SDS011_OK    : all good
+     */
+    int Set_Humidity_Cor(float h);
+    
+    /**
+     * @brief : get data when in query mode
+     *
+     * @param PM25 : to store the measured PM2.5 value
+     * @param PM10 : to store the measured PM10 value
+     * 
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Query_data(float *PM25, float *PM10) 
+        {return(Report_Data(REPORT_QUERY, PM25, PM10));}
 
-#define REDSTR "\e[1;31m%s\e[00m"
-#define GRNSTR "\e[1;92m%s\e[00m"
-#define YLWSTR "\e[1;93m%s\e[00m"
-#define BLUSTR "\e[1;34m%s\e[00m"
+    /**
+     * @brief : get data when in continuous mode
+     *
+     * @param PM25 : to store the measured PM2.5 value
+     * @param PM10 : to store the measured PM10 value
+     * 
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Get_data(float *PM25, float *PM10)
+        {return(Report_Data(REPORT_STREAM, PM25, PM10));}
 
-/*! set to disable color output */
-extern bool NoColor;
+  private:
+    
+    /**
+     * @brief : Try to connect to device before executing requested commands
+     *
+     * @param fd: file descriptor of opened device
+     *  *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Try_Connect(int fd);
+    
 
-#ifdef __cplusplus
-}
-#endif
+    /**
+     * @brief Process input from sensor.
+     * 
+     * @param packet Received packets from sensor.
+     * @param length Number of received packets.
+     * 
+     * @return 
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    uint8_t ProcessResponse( const uint8_t *packet, uint8_t length);
+    
+    /**
+     * @brief Calculate checksum from bytes.
+     * 
+     * @param packet Packets to use for computation.
+     * @param length Number of bytes to use.
+     * 
+     * @return Checksum of bytes.
+     */
+    uint8_t Calc_Checksum(const uint8_t *packet, uint8_t length);
+    
+    /**
+     * @brief : initialise packet to be send.
+     * @param data1 : the data1 byte to be included
+     */
+    void prepare_packet(uint8_t data1);
+    
+    /**
+     * @brief : read response from sds011
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int read_sds();
+    
+    /**
+     * @brief : add CRC + send to SDS-011
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int send_sds();
+  
+    /**
+     * @brief : wait for response on conf request
+     *
+     * The SDS-011 gets lost when a next configuration request
+     * is send, while not replied to earlier conf request. Especially when
+     * in reporting/streaming mode, the first read-back response often
+     * is still a data packet. The _PendingConfReq-flag will prevent sending
+     * another configuration request if not received answer on previous yet
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Wait_For_answer();
+    
+    /**
+     * @brief : get current parameter
+     * 
+     * @param c : parameter requested
+     * SDS011_MODE  : current reporting mode
+     * SDS011_SLEEP : current sleep working mode
+     * SDS011_PERIOD: current working period
+     * 
+     * @param p : return value
+     * SDS011_MODE
+     *      REPORT_STREAM
+     *      REPORT_QUERY
+     * 
+     * SDS011_SLEEP:    
+     *      MODE_SLEEP
+     *      MODE_WORK
+     * 
+     * SDS011_PERIOD
+     *      0 continuous
+     *      >0 < 30 minutes
+     * 
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Get_Param(uint8_t c, uint8_t *p);
+   
+    /**
+     * @brief : set the data reporting mode
+     *
+     * @param mode : parameter to set
+     * SDS011_MODE  : current reporting mode
+     * SDS011_SLEEP : current sleep working mode
+     * SDS011_PERIOD: current working period
+     * 
+     * @param p : value to set
+     * SDS011_MODE
+     *      REPORT_STREAM
+     *      REPORT_QUERY
+     * 
+     * SDS011_SLEEP:    
+     *      MODE_SLEEP
+     *      MODE_WORK
+     * 
+     * SDS011_PERIOD
+     *      0 continuous
+     *      >0 < 30 minutes
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Set_Param (uint8_t mode, uint8_t p);
+    
+    /**
+     * 
+     * @brief : read data
+     *
+     * @param rmode : 
+     *  REPORT_STREAM : read response from SDS011 (default)     
+     *  REPORT_QUERY  : will sent an additional request for data
+     *      
+     * @param PM25 : to store the measured PM2.5 value
+     * @param PM10 : to store the measured PM10 value
+     *
+     * @return :
+     *  SDS011_ERROR : could not send command
+     *  SDS011_OK    : all good
+     */
+    int Report_Data (uint8_t rmode, float *PM25, float *PM10);
+    
+};
 
 #endif /* _SDS011_H */

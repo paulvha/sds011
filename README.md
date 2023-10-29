@@ -2,7 +2,9 @@
 ===========================================================
 
 A program to set instructions and get information from an SDS-011 running
-on linux.<br>It has been written in C and contains a flexible command-line options.<br>
+on linux.<br>
+V1 was written in C and contains a flexible command-line options.<br>
+V2 is optimized and written in C++<br>
 A detailed description of the many options and findings are in sds011.odt
 
 ## Getting Started
@@ -55,12 +57,22 @@ Program setting:
 
 ## Versioning
 
-### version 1.0 / January 2019
- * Initial version for Raspberry Pi and Ubuntu
+### version 2.1 /October 2023
+ * fixed issue with failing wakeup after setting to sleep
+
+### version 2.0 / May 2019
+ * changed to better sturuct between user level and supporting library
+ * change to C++ file structure
+ * enhanced debugging
 
 ### version 1.1 / February 2019
  * set reporting mode to query included in -q option
  * set reporting mode to stream included in  -o option
+
+### version 1.0 / January 2019
+ * Initial version for Raspberry Pi and Ubuntu
+
+
 
 ## Author
 * Paul van Haastrecht (paulvha@hotmail.com)
